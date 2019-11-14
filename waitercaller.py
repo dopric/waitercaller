@@ -1,11 +1,66 @@
-from flask import Flask
+from flask import Flask, render_template
+from flask_login import LoginManager
+from flask_login import login_required, login_user, logout_user
+from flask import request, redirect, url_for
+
+from models.mockdbhelper import MockDbHelper as DbHelper
+from models.user import User
+from passwordhelper import PasswordHelper
+
+DB = DbHelper()
+PH = PasswordHelper()
 
 app = Flask(__name__)
+app.secret_key = "afakewoik234llc*%$3odooserfefease12"
+
+login_manager = LoginManager(app)
 
 @app.route("/")
 def home():
-    return "Under construction"
+    return render_template("home.html")
 
+@app.route("/login", methods=['POST'])
+def login():
+    email = request.form.get('email')
+    password = request.form.get('password')
+    stored_user = DB.get_user(email)
+    if stored_user:
+        if PH.validate_password(password, stored_user['salt'], stored_user['hashed']):
+            user = User(email)
+            login_user(user, remember=True)
+            return redirect(url_for('account'))
+    return redirect(url_for("home"))
+
+@login_manager.user_loader
+def load_user(user_id):
+    user_password = DB.get_user(user_id)
+    if user_password:
+        return User(user_id)
+
+@app.route("/account")
+@login_required
+def account():
+    return "you are logged in"
+
+
+@app.route("/logout")
+def logout():
+    logout_user()
+    return redirect(url_for("home"))
+
+@app.route("/register", methods=['POST'])
+def register():
+    email = request.form.get("email")
+    password= request.form.get("password")
+    confirm_password  = request.form.get("confirm_password")
+    if password != confirm_password:
+        return redirect(url_for("home"))
+    if DB.get_user(email):
+        return redirect(url_for("home"))
+    salt = PH.get_salt()
+    hashed = PH._get_hash(password + salt)
+    DB.add_user(email, salt, hashed)
+    return redirect(url_for("home"))
 
 if __name__=="__main__":
     app.run()
